@@ -1,11 +1,17 @@
-# yt2blog
-
-<img width="1366" height="758" alt="yt2blog" src="https://github.com/user-attachments/assets/d563e9c6-9f50-443d-a738-a87613c220f5" />
+<img width="1280" height="720" alt="yt2blog-ad" src="https://github.com/user-attachments/assets/a1443f23-db8e-4a01-94d0-c98f9e7ffdd6" />
 
 > Transform any YouTube video into a polished blog post using AI
 
 [![npm version](https://img.shields.io/npm/v/yt2blog.svg)](https://www.npmjs.com/package/yt2blog)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+## Quick Start
+
+```bash
+npx yt2blog
+```
+
+That's it! The CLI will guide you through the rest.
 
 ```
 ╔════════════════════════════════════════════════════════════════════╗
@@ -19,14 +25,6 @@
 ║                                                                    ║
 ╚════════════════════════════════════════════════════════════════════╝
 ```
-
-## Quick Start
-
-```bash
-npx yt2blog
-```
-
-That's it! The CLI will guide you through the rest.
 
 ## Installation
 

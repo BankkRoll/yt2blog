@@ -135,12 +135,7 @@ export function Splash({ onComplete }: SplashProps) {
               </Text>
             </Box>
             <Box marginTop={1}>
-              <Text color={theme.palette.textMuted}>Powered by </Text>
-              <Text color={theme.palette.info}>openai/gpt-5.4</Text>
-              <Text color={theme.palette.textMuted}> • </Text>
-              <Text color={theme.palette.secondary}>
-                anthropic/claude-sonnet-4.6
-              </Text>
+              <Text color={theme.palette.textMuted}>Powered by AI Gateway</Text>
             </Box>
           </Box>
         )}

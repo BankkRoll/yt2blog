@@ -3,9 +3,10 @@
  * @module cli/screens/Settings
  */
 
-import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
-import { useTheme, THEMES } from "../theme/index.js";
+import React, { useState } from "react";
+import { THEMES, useTheme } from "../theme/index.js";
+
 import { DEFAULT_MODEL } from "../../prompts/styles.js";
 import { ModelSelector } from "../components/ModelSelector.js";
 
@@ -137,7 +138,7 @@ export function Settings({ onBack, onSave, currentSettings }: SettingsProps) {
       <Box>
         <Box
           flexDirection="column"
-          width={20}
+          width={25}
           borderStyle="single"
           borderColor={theme.palette.border}
           paddingX={1}
