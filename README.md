@@ -4,6 +4,7 @@
 
 > Transform any YouTube video into a polished blog post using AI
 
+[![npm version](https://img.shields.io/npm/v/yt2blog.svg)](https://www.npmjs.com/package/yt2blog)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ```
@@ -19,62 +20,42 @@
 ╚════════════════════════════════════════════════════════════════════╝
 ```
 
-## Features
-
-- **YouTube → Transcript → AI → Blog** - Full pipeline from video URL to polished markdown
-- **Dynamic Model Selection** - Search, sort, and filter from 20+ AI models with live pricing info
-- **Multiple Blog Styles** - SEO, Medium essay, Newsletter, Twitter thread, Technical breakdown
-- **9 Built-in Themes** - Default, Dracula, Nord, Catppuccin, Tokyo Night, Monokai, High Contrast, Neo Brutalism, Windows 98
-- **BYOK (Bring Your Own Key)** - Use your own API keys or AI Gateway
-- **Interactive CLI** - Beautiful terminal UI with progress tracking
-
-## Prerequisites
-
-- **Node.js** >= 18
-- **pnpm** (recommended) or npm
-- **API Key** - Either AI Gateway key or provider-specific key (see below)
-- **yt-dlp** (optional) - Only needed for Whisper fallback on videos without captions
-
 ## Quick Start
 
 ```bash
-# Clone and install
-git clone https://github.com/BankkRoll/yt2blog.git
-cd yt2blog
-pnpm install
-
-# Set your API key
-cp .env.example .env
-# Edit .env and add your key(s)
-
-# Run
-pnpm dev
+npx yt2blog
 ```
 
-## Environment Variables
+That's it! The CLI will guide you through the rest.
 
-Environment variables can be set in multiple ways:
+## Installation
 
 ```bash
-# Option 1: .env file (recommended)
-cp .env.example .env
-# Edit .env with your keys
+# Run directly (no install)
+npx yt2blog
 
-# Option 2: Shell export
+# Or install globally
+npm install -g yt2blog
+yt2blog
+```
+
+## Configuration
+
+Set your API key before running:
+
+```bash
+# Option 1: Inline (easiest)
+AI_GATEWAY_API_KEY=your-key npx yt2blog
+
+# Option 2: Export in shell
 export AI_GATEWAY_API_KEY=your-key
+npx yt2blog
 
-# Option 3: Inline with command
-AI_GATEWAY_API_KEY=your-key pnpm dev
-
-# Option 4: System environment variables
+# Option 3: System environment variable
 # Set via your OS settings
 ```
 
 ### AI Gateway (Recommended)
-
-```bash
-AI_GATEWAY_API_KEY=your-gateway-key
-```
 
 Get your key from [Vercel Dashboard](https://vercel.com/dashboard) → AI Gateway
 
@@ -102,6 +83,15 @@ If not using AI Gateway, set keys for the providers you want to use:
 
 Available themes: `default`, `dracula`, `nord`, `catppuccin`, `tokyo-night`, `monokai`, `high-contrast`, `neo-brutalism`, `windows-98`
 
+## Features
+
+- **YouTube → Transcript → AI → Blog** - Full pipeline from video URL to polished markdown
+- **Dynamic Model Selection** - Search, sort, and filter from 20+ AI models with live pricing info
+- **Multiple Blog Styles** - SEO, Medium essay, Newsletter, Twitter thread, Technical breakdown
+- **9 Built-in Themes** - Default, Dracula, Nord, Catppuccin, Tokyo Night, Monokai, High Contrast, Neo Brutalism, Windows 98
+- **BYOK (Bring Your Own Key)** - Use your own API keys or AI Gateway
+- **Interactive CLI** - Beautiful terminal UI with progress tracking
+
 ## Supported Models
 
 The model selector dynamically fetches available models from AI Gateway. When offline or without a gateway key, these defaults are available:
@@ -117,6 +107,17 @@ The model selector dynamically fetches available models from AI Gateway. When of
 | Perplexity | Sonar Large Online                                                  |
 | xAI        | Grok 2                                                              |
 | DeepSeek   | DeepSeek Chat                                                       |
+
+## Development
+
+For local development setup, see [DEVELOPMENT.md](DEVELOPMENT.md).
+
+```bash
+git clone https://github.com/BankkRoll/yt2blog.git
+cd yt2blog
+pnpm install
+pnpm dev
+```
 
 ## Documentation
 
