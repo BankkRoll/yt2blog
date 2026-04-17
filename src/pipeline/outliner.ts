@@ -8,7 +8,6 @@ import type {
   ContentAnalysis,
   BlogOutline,
   BlogConfig,
-  BYOKConfig,
 } from "../gateway/types.js";
 
 const OUTLINE_PROMPT = `Create a blog outline based on this content analysis.
@@ -48,7 +47,6 @@ export async function generateOutline(
   analysis: ContentAnalysis,
   config: BlogConfig,
   model: string,
-  byok?: BYOKConfig,
 ): Promise<BlogOutline> {
   const prompt = OUTLINE_PROMPT.replace("{analysis}", JSON.stringify(analysis))
     .replace(/\{style\}/g, config.style)
@@ -56,7 +54,7 @@ export async function generateOutline(
     .replace("{wordCount}", String(config.wordCount))
     .replace("{tone}", config.tone || analysis.tone);
 
-  return completeJSON(model, prompt, byok);
+  return completeJSON(model, prompt);
 }
 
 /** Distributes target word count across sections (intro/conclusion get less). */
@@ -119,7 +117,6 @@ export async function refineOutline(
   outline: BlogOutline,
   feedback: string,
   model: string,
-  byok?: BYOKConfig,
 ): Promise<BlogOutline> {
   const prompt = `Refine this blog outline based on the feedback.
 
@@ -131,5 +128,5 @@ ${feedback}
 
 Return the improved outline in the same JSON format.`;
 
-  return completeJSON(model, prompt, byok);
+  return completeJSON(model, prompt);
 }

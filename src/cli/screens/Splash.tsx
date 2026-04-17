@@ -26,7 +26,7 @@ const FEATURES = [
   "YouTube → Transcript → AI → Blog",
   "Any model via string routing",
   "SEO • Medium • Newsletter • Thread • Technical",
-  "BYOK (Bring Your Own Key)",
+  "Multi-provider support via env vars",
 ];
 
 interface SplashProps {

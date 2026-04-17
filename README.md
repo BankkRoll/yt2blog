@@ -57,7 +57,7 @@ npx yt2blog
 
 Get your key from [Vercel Dashboard](https://vercel.com/dashboard) → AI Gateway
 
-### Provider-Specific Keys (BYOK)
+### Provider-Specific Keys
 
 If not using AI Gateway, set keys for the providers you want to use:
 
@@ -87,7 +87,7 @@ Available themes: `default`, `dracula`, `nord`, `catppuccin`, `tokyo-night`, `mo
 - **Dynamic Model Selection** - Search, sort, and filter from 20+ AI models with live pricing info
 - **Multiple Blog Styles** - SEO, Medium essay, Newsletter, Twitter thread, Technical breakdown
 - **9 Built-in Themes** - Default, Dracula, Nord, Catppuccin, Tokyo Night, Monokai, High Contrast, Neo Brutalism, Windows 98
-- **BYOK (Bring Your Own Key)** - Use your own API keys or AI Gateway
+- **Multi-Provider Support** - Use AI Gateway or provider-specific API keys
 - **Interactive CLI** - Beautiful terminal UI with progress tracking
 
 ## Supported Models

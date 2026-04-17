@@ -183,7 +183,7 @@ export function MyComponent() {
 ### New AI Provider
 
 1. Update `PROVIDERS` in `src/gateway/types.ts`
-2. Add BYOK key type to `BYOKConfig`
+2. Add env var to `PROVIDER_ENV_KEYS` in `src/gateway/index.ts`
 3. Handle in `buildProviderOptions` if needed
 
 ## Testing

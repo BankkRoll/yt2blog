@@ -4,11 +4,7 @@
  */
 
 import { completeJSON } from "../gateway/index.js";
-import type {
-  TranscriptChunk,
-  ContentAnalysis,
-  BYOKConfig,
-} from "../gateway/types.js";
+import type { TranscriptChunk, ContentAnalysis } from "../gateway/types.js";
 
 const ANALYSIS_PROMPT = `Analyze this video transcript and extract structured information.
 
@@ -34,43 +30,51 @@ Rules:
 - Include 2-5 memorable quotes
 - Be specific, not generic`;
 
-/** Extracts structured content analysis (topics, key points, tone) from transcript chunks. */
+/**
+ * Extracts structured content analysis from transcript chunks.
+ * @param chunks - Transcript chunks to analyze
+ * @param model - Model identifier (e.g., "openai/gpt-4o")
+ * @returns Analysis with topics, key points, tone, audience, and quotes
+ */
 export async function analyzeContent(
   chunks: TranscriptChunk[],
   model: string,
-  byok?: BYOKConfig,
 ): Promise<ContentAnalysis> {
   const transcript = chunks.map((c) => c.text).join("\n\n");
   const prompt = ANALYSIS_PROMPT.replace("{transcript}", transcript);
 
-  return completeJSON(model, prompt, byok);
+  return completeJSON(model, prompt);
 }
 
-/** Analyzes long transcripts in batches, then merges results. */
+/**
+ * Analyzes long transcripts in batches, then merges results.
+ * @param chunks - Transcript chunks to analyze
+ * @param model - Model identifier (e.g., "openai/gpt-4o")
+ * @param batchSize - Number of chunks per batch (default: 10)
+ * @returns Merged content analysis
+ */
 export async function analyzeInBatches(
   chunks: TranscriptChunk[],
   model: string,
-  byok?: BYOKConfig,
   batchSize: number = 10,
 ): Promise<ContentAnalysis> {
   if (chunks.length <= batchSize) {
-    return analyzeContent(chunks, model, byok);
+    return analyzeContent(chunks, model);
   }
 
   const batchResults: ContentAnalysis[] = [];
   for (let i = 0; i < chunks.length; i += batchSize) {
     const batch = chunks.slice(i, i + batchSize);
-    const result = await analyzeContent(batch, model, byok);
+    const result = await analyzeContent(batch, model);
     batchResults.push(result);
   }
 
-  return mergeAnalyses(batchResults, model, byok);
+  return mergeAnalyses(batchResults, model);
 }
 
 async function mergeAnalyses(
   analyses: ContentAnalysis[],
   model: string,
-  byok?: BYOKConfig,
 ): Promise<ContentAnalysis> {
   const mergePrompt = `Merge these content analyses into a single coherent analysis.
 
@@ -93,14 +97,18 @@ Rules:
 - Keep only the best 3-5 quotes
 - Title should capture the full content`;
 
-  return completeJSON(model, mergePrompt, byok);
+  return completeJSON(model, mergePrompt);
 }
 
-/** Finds compelling moments suitable for hooks, clips, or social quotes. */
+/**
+ * Finds compelling moments suitable for hooks, clips, or social quotes.
+ * @param chunks - Transcript chunks to search
+ * @param model - Model identifier (e.g., "openai/gpt-4o")
+ * @returns Array of highlights with timestamp, text, and reason
+ */
 export async function extractHighlights(
   chunks: TranscriptChunk[],
   model: string,
-  byok?: BYOKConfig,
 ): Promise<Array<{ timestamp: number; text: string; reason: string }>> {
   const transcript = chunks
     .map((c) => `[${formatTime(c.start)}] ${c.text}`)
@@ -118,7 +126,7 @@ Return JSON array:
 
 Find 3-5 moments that would make good hooks, clips, or social quotes.`;
 
-  return completeJSON(model, prompt, byok);
+  return completeJSON(model, prompt);
 }
 
 function formatTime(seconds: number): string {

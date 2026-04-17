@@ -11,6 +11,7 @@ import {
   getStyleInfo,
   BLOG_STYLES,
 } from "../../prompts/styles.js";
+import type { BlogStyle } from "../../gateway/types.js";
 import { InfoBox } from "../components/InfoBox.js";
 import { ModelSelector } from "../components/ModelSelector.js";
 
@@ -27,10 +28,9 @@ const PROVIDER_ENV_VARS: Record<string, string> = {
 export interface SetupConfig {
   videoUrl: string;
   model: string;
-  style: string;
+  style: BlogStyle;
   sections: number;
   wordCount: number;
-  byok?: Record<string, string>;
 }
 
 interface SetupProps {
@@ -50,7 +50,6 @@ export function Setup({ onComplete, defaultModel }: SetupProps) {
     style: "seo",
     sections: 5,
     wordCount: 1500,
-    byok: {},
   });
   const [inputValue, setInputValue] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -105,14 +104,9 @@ export function Setup({ onComplete, defaultModel }: SetupProps) {
             setStep("model");
           }
         } else if (step === "apiKey") {
-          const provider = config.model?.split("/")[0];
-          if (inputValue.trim() && provider) {
-            const updatedConfig = {
-              ...config,
-              byok: { ...config.byok, [provider]: inputValue.trim() },
-            };
-            onComplete(updatedConfig);
-          }
+          // API key must be set via environment variables
+          // Just proceed - will error at runtime if missing
+          onComplete(config);
         }
       } else if (key.backspace || key.delete) {
         setInputValue((prev) => prev.slice(0, -1));

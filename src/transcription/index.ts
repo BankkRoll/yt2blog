@@ -3,11 +3,7 @@
  * @module transcription
  */
 
-import {
-  fetchTranscript,
-  getFullTranscript,
-  extractVideoId,
-} from "./youtube.js";
+import { fetchTranscript, extractVideoId } from "./youtube.js";
 import { cleanTranscript, splitIntoChunks } from "./whisper.js";
 
 /** Result from transcribing a video. */
@@ -19,9 +15,17 @@ export interface TranscriptionResult {
   source: "youtube" | "whisper";
 }
 
+/** Options for transcript fetching */
+export interface GetTranscriptOptions {
+  cleanWithAI?: boolean;
+  model?: string;
+}
+
 /** Fetches transcript from YouTube, with optional AI cleaning. */
-export async function getTranscript(videoUrl, options: any = {}) {
-  const opts = options || {};
+export async function getTranscript(
+  videoUrl: string,
+  options: GetTranscriptOptions = {},
+): Promise<TranscriptionResult> {
   const videoId = extractVideoId(videoUrl);
   if (!videoId) {
     throw new Error(`Invalid YouTube URL: ${videoUrl}`);
@@ -36,11 +40,11 @@ export async function getTranscript(videoUrl, options: any = {}) {
       : 0;
 
     let finalText = fullText;
-    if (opts.cleanWithAI && opts.model) {
-      finalText = await cleanTranscript(fullText, opts.model, opts.byok);
+    if (options.cleanWithAI && options.model) {
+      finalText = await cleanTranscript(fullText, options.model);
     }
 
-    const formattedChunks = opts.cleanWithAI
+    const formattedChunks = options.cleanWithAI
       ? splitIntoChunks(finalText)
       : chunks.map((c) => ({
           start: c.offset / 1000,
@@ -61,10 +65,3 @@ export async function getTranscript(videoUrl, options: any = {}) {
     );
   }
 }
-
-export {
-  extractVideoId,
-  fetchTranscript,
-  getFullTranscript,
-} from "./youtube.js";
-export { cleanTranscript, splitIntoChunks } from "./whisper.js";

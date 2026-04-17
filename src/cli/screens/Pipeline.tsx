@@ -94,7 +94,6 @@ export function Pipeline({
             sections: config.sections,
             wordCount: config.wordCount,
           },
-          byok: config.byok,
           onStep: (step) => {
             setSteps((prev) => prev.map((s) => (s.id === step.id ? step : s)));
             if (step.status === "running") {
@@ -133,7 +132,6 @@ export function Pipeline({
             sections: config.sections,
             wordCount: config.wordCount,
           },
-          byok: config.byok,
         });
 
         for await (const event of generator) {

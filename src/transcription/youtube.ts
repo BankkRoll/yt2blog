@@ -3,6 +3,26 @@
  * @module transcription/youtube
  */
 
+/** Configuration options for transcript fetching */
+export interface TranscriptConfig {
+  lang?: string;
+  fetch?: typeof fetch;
+}
+
+/** Individual transcript entry */
+export interface TranscriptEntry {
+  text: string;
+  duration: number;
+  offset: number;
+  lang: string;
+}
+
+/** Caption track from YouTube API */
+interface CaptionTrack {
+  baseUrl: string;
+  languageCode: string;
+}
+
 const RE_YOUTUBE =
   /(?:youtube\.com\/(?:shorts\/|[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
 const USER_AGENT =
@@ -22,7 +42,7 @@ const INNERTUBE_CONTEXT = {
 const INNERTUBE_USER_AGENT = `com.google.android.youtube/${INNERTUBE_CLIENT_VERSION} (Linux; U; Android 14)`;
 
 export class YoutubeTranscriptError extends Error {
-  constructor(message) {
+  constructor(message: string) {
     super(`[YoutubeTranscript] 🚨 ${message}`);
   }
 }
@@ -36,25 +56,25 @@ export class YoutubeTranscriptTooManyRequestError extends YoutubeTranscriptError
 }
 
 export class YoutubeTranscriptVideoUnavailableError extends YoutubeTranscriptError {
-  constructor(videoId) {
+  constructor(videoId: string) {
     super(`The video is no longer available (${videoId})`);
   }
 }
 
 export class YoutubeTranscriptDisabledError extends YoutubeTranscriptError {
-  constructor(videoId) {
+  constructor(videoId: string) {
     super(`Transcript is disabled on this video (${videoId})`);
   }
 }
 
 export class YoutubeTranscriptNotAvailableError extends YoutubeTranscriptError {
-  constructor(videoId) {
+  constructor(videoId: string) {
     super(`No transcripts are available for this video (${videoId})`);
   }
 }
 
 export class YoutubeTranscriptNotAvailableLanguageError extends YoutubeTranscriptError {
-  constructor(lang, availableLangs, videoId) {
+  constructor(lang: string, availableLangs: string[], videoId: string) {
     super(
       `No transcripts are available in ${lang} this video (${videoId}). Available languages: ${availableLangs.join(
         ", ",
@@ -66,7 +86,10 @@ export class YoutubeTranscriptNotAvailableLanguageError extends YoutubeTranscrip
 /** YouTube transcript retrieval with InnerTube API and web scraping fallback. */
 export class YoutubeTranscript {
   /** Fetch transcript from a YouTube video. */
-  static async fetchTranscript(videoId, config) {
+  static async fetchTranscript(
+    videoId: string,
+    config?: TranscriptConfig,
+  ): Promise<TranscriptEntry[]> {
     const identifier = this.retrieveVideoId(videoId);
 
     const innerTubeResult = await this.fetchViaInnerTube(identifier, config);
@@ -76,7 +99,10 @@ export class YoutubeTranscript {
     return this.fetchViaWebPage(identifier, videoId, config);
   }
 
-  static async fetchViaInnerTube(identifier, config) {
+  static async fetchViaInnerTube(
+    identifier: string,
+    config?: TranscriptConfig,
+  ): Promise<TranscriptEntry[] | undefined> {
     try {
       const fetchFn = config?.fetch ?? fetch;
       const resp = await fetchFn(INNERTUBE_API_URL, {
@@ -107,7 +133,11 @@ export class YoutubeTranscript {
     }
   }
 
-  static async fetchViaWebPage(identifier, originalVideoId, config) {
+  static async fetchViaWebPage(
+    identifier: string,
+    originalVideoId: string,
+    config?: TranscriptConfig,
+  ): Promise<TranscriptEntry[]> {
     const fetchFn = config?.fetch ?? fetch;
     const videoPageResponse = await fetchFn(
       `https://www.youtube.com/watch?v=${identifier}`,
@@ -145,7 +175,7 @@ export class YoutubeTranscript {
     );
   }
 
-  static parseInlineJson(html, globalName) {
+  static parseInlineJson(html: string, globalName: string): any {
     const startToken = `var ${globalName} = `;
     const startIndex = html.indexOf(startToken);
     if (startIndex === -1) return null;
@@ -168,7 +198,11 @@ export class YoutubeTranscript {
     return null;
   }
 
-  static async fetchTranscriptFromTracks(captionTracks, videoId, config) {
+  static async fetchTranscriptFromTracks(
+    captionTracks: CaptionTrack[],
+    videoId: string,
+    config?: TranscriptConfig,
+  ): Promise<TranscriptEntry[]> {
     if (
       config?.lang &&
       !captionTracks.some((track) => track.languageCode === config?.lang)
@@ -211,8 +245,8 @@ export class YoutubeTranscript {
     return this.parseTranscriptXml(transcriptBody, lang);
   }
 
-  static parseTranscriptXml(xml, lang) {
-    const results = [];
+  static parseTranscriptXml(xml: string, lang: string): TranscriptEntry[] {
+    const results: TranscriptEntry[] = [];
 
     // srv3 format: <p t="ms" d="ms"><s>word</s>...</p>
     const pRegex = /<p\s+t="(\d+)"\s+d="(\d+)"[^>]*>([\s\S]*?)<\/p>/g;
@@ -255,7 +289,7 @@ export class YoutubeTranscript {
     }));
   }
 
-  static decodeEntities(text) {
+  static decodeEntities(text: string): string {
     return text
       .replace(/&amp;/g, "&")
       .replace(/&lt;/g, "<")
@@ -271,7 +305,7 @@ export class YoutubeTranscript {
       );
   }
 
-  static retrieveVideoId(videoId) {
+  static retrieveVideoId(videoId: string): string {
     if (videoId.length === 11) {
       return videoId;
     }
@@ -286,7 +320,10 @@ export class YoutubeTranscript {
 }
 
 /** Fetch transcript from YouTube. */
-export function fetchTranscript(videoId, config = {}) {
+export function fetchTranscript(
+  videoId: string,
+  config: TranscriptConfig = {},
+): Promise<TranscriptEntry[]> {
   return YoutubeTranscript.fetchTranscript(videoId, config);
 }
 
@@ -300,13 +337,20 @@ export function extractVideoId(url: string): string | null {
 }
 
 /** Get the full transcript as a single string. */
-export async function getFullTranscript(videoUrl) {
+export async function getFullTranscript(videoUrl: string): Promise<string> {
   const transcript = await fetchTranscript(videoUrl);
   return transcript.map((item) => item.text).join(" ");
 }
 
+/** Video info extracted from transcript */
+export interface VideoInfo {
+  videoId: string;
+  estimatedDuration: number;
+  chunkCount: number;
+}
+
 /** Get video metadata from transcript. */
-export async function getVideoInfo(videoUrl) {
+export async function getVideoInfo(videoUrl: string): Promise<VideoInfo> {
   const videoId = extractVideoId(videoUrl);
   if (!videoId) {
     throw new Error(`Invalid YouTube URL: ${videoUrl}`);

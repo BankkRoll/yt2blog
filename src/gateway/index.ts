@@ -1,12 +1,13 @@
 /**
  * @fileoverview AI Gateway client for multi-provider LLM access
- * @module gateway/index
+ * @module gateway
  */
 
 import { generateText, streamText } from "ai";
 import { gateway } from "@ai-sdk/gateway";
-import type { BYOKConfig } from "./types.js";
+import type { Message } from "./types.js";
 
+/** Model information returned from the AI Gateway */
 export interface GatewayModel {
   id: string;
   name: string;
@@ -175,31 +176,29 @@ export function getDefaultModels(): GatewayModel[] {
   ];
 }
 
+/** Parsed model string components */
 interface ParsedModel {
   provider: string;
   model: string;
 }
 
+/** AI Gateway internal format for provider-specific API keys */
 interface ProviderOptions {
   gateway: {
     byok: Record<string, Array<{ apiKey: string }>>;
   };
 }
 
-interface Message {
-  role: "system" | "user" | "assistant";
-  content: string;
-}
-
-interface GenerateOptions {
+/** Options for text generation */
+export interface GenerateOptions {
   model: string;
   messages: Message[];
   temperature?: number;
   maxTokens?: number;
-  byok?: BYOKConfig;
 }
 
-interface GenerateResult {
+/** Result from text generation */
+export interface GenerateResult {
   text: string;
   usage?: {
     promptTokens: number;
@@ -210,6 +209,42 @@ interface GenerateResult {
   provider: string;
 }
 
+/** Environment variable names for provider-specific keys */
+const PROVIDER_ENV_KEYS: Record<string, string> = {
+  openai: "OPENAI_API_KEY",
+  anthropic: "ANTHROPIC_API_KEY",
+  google: "GOOGLE_API_KEY",
+  groq: "GROQ_API_KEY",
+  mistral: "MISTRAL_API_KEY",
+  cohere: "COHERE_API_KEY",
+  perplexity: "PERPLEXITY_API_KEY",
+  xai: "XAI_API_KEY",
+  deepseek: "DEEPSEEK_API_KEY",
+};
+
+/**
+ * Resolves API key for a provider using priority:
+ * 1. Provider-specific env var (e.g., OPENAI_API_KEY)
+ * 2. AI Gateway key (handles all providers)
+ */
+export function resolveApiKey(provider: string): string | undefined {
+  const envKey = PROVIDER_ENV_KEYS[provider];
+  if (envKey && process.env[envKey]) return process.env[envKey];
+  return process.env.AI_GATEWAY_API_KEY;
+}
+
+/** Checks if a provider has a valid API key available */
+export function hasApiKey(provider: string): boolean {
+  return !!resolveApiKey(provider);
+}
+
+/** Returns list of providers that have API keys configured */
+export function getAvailableProviders(): string[] {
+  const providers = Object.keys(PROVIDER_ENV_KEYS);
+  if (process.env.AI_GATEWAY_API_KEY) return providers;
+  return providers.filter((p) => hasApiKey(p));
+}
+
 function parseModel(modelString: string): ParsedModel {
   const [provider, ...modelParts] = modelString.split("/");
   return {
@@ -218,18 +253,14 @@ function parseModel(modelString: string): ParsedModel {
   };
 }
 
-function buildProviderOptions(
-  provider: string,
-  byok?: BYOKConfig,
-): ProviderOptions | undefined {
-  if (!byok || !byok[provider]) {
-    return undefined;
-  }
+function buildProviderOptions(provider: string): ProviderOptions | undefined {
+  const key = resolveApiKey(provider);
+  if (!key || key === process.env.AI_GATEWAY_API_KEY) return undefined;
 
   return {
     gateway: {
       byok: {
-        [provider]: [{ apiKey: byok[provider]! }],
+        [provider]: [{ apiKey: key }],
       },
     },
   };
@@ -239,13 +270,7 @@ function buildProviderOptions(
 export async function generate(
   options: GenerateOptions,
 ): Promise<GenerateResult> {
-  const {
-    model,
-    messages,
-    temperature = 0.7,
-    maxTokens = 4096,
-    byok,
-  } = options;
+  const { model, messages, temperature = 0.7, maxTokens = 4096 } = options;
   const { provider } = parseModel(model);
 
   const result = await generateText({
@@ -253,7 +278,7 @@ export async function generate(
     messages,
     temperature,
     maxTokens: maxTokens as any,
-    providerOptions: buildProviderOptions(provider, byok),
+    providerOptions: buildProviderOptions(provider),
   } as any);
 
   const usage = result.usage as any;
@@ -276,13 +301,7 @@ export async function generate(
 
 /** Streams text using the specified model via AI Gateway. */
 export function generateStream(options: GenerateOptions) {
-  const {
-    model,
-    messages,
-    temperature = 0.7,
-    maxTokens = 4096,
-    byok,
-  } = options;
+  const { model, messages, temperature = 0.7, maxTokens = 4096 } = options;
   const { provider } = parseModel(model);
 
   const result = streamText({
@@ -290,22 +309,17 @@ export function generateStream(options: GenerateOptions) {
     messages,
     temperature,
     maxTokens: maxTokens as any,
-    providerOptions: buildProviderOptions(provider, byok),
+    providerOptions: buildProviderOptions(provider),
   } as any);
 
   return result;
 }
 
 /** Simple completion helper for single prompts. */
-export async function complete(
-  model: string,
-  prompt: string,
-  byok?: BYOKConfig,
-): Promise<string> {
+export async function complete(model: string, prompt: string): Promise<string> {
   const result = await generate({
     model,
     messages: [{ role: "user", content: prompt }],
-    byok,
   });
   return result.text;
 }
@@ -314,7 +328,6 @@ export async function complete(
 export async function completeJSON<T = unknown>(
   model: string,
   prompt: string,
-  byok?: BYOKConfig,
 ): Promise<T> {
   const result = await generate({
     model,
@@ -327,7 +340,6 @@ export async function completeJSON<T = unknown>(
       { role: "user", content: prompt },
     ],
     temperature: 0.3, // Lower temp for structured output
-    byok,
   });
 
   let jsonStr = result.text.trim();

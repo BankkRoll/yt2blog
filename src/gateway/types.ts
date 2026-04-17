@@ -5,27 +5,15 @@
 
 import { z } from "zod";
 
-/** Validates model strings in provider/model format. */
+/** Zod schema for validating model strings in provider/model format */
 export const ModelStringSchema = z
   .string()
   .regex(
     /^[a-z]+\/[a-z0-9\-\.]+$/i,
-    "Model must be in format: provider/model (e.g., openai/gpt-5.4)",
+    "Model must be in format: provider/model (e.g., openai/gpt-4o)",
   );
 
 export type ModelString = z.infer<typeof ModelStringSchema>;
-
-export const PROVIDERS = ["openai", "anthropic", "google", "groq"];
-
-export type Provider = "openai" | "anthropic" | "google" | "groq";
-
-/** BYOK (Bring Your Own Key) configuration mapping providers to API keys. */
-export interface BYOKConfig {
-  openai?: string;
-  anthropic?: string;
-  google?: string;
-  groq?: string;
-}
 
 /** Options for AI Gateway requests. */
 export interface GatewayOptions {
@@ -34,7 +22,6 @@ export interface GatewayOptions {
   temperature?: number;
   maxTokens?: number;
   stream?: boolean;
-  byok?: BYOKConfig;
 }
 
 /** Chat message format (OpenAI-compatible). */
@@ -61,28 +48,28 @@ export interface StreamChunk {
   done: boolean;
 }
 
-/** Blog generation configuration. */
-export interface BlogConfig {
-  style: string;
-  sections: number;
-  wordCount: number;
-  tone?: string;
-}
-
+/** Available blog styles */
 export const BLOG_STYLES = [
   "seo",
   "medium",
   "newsletter",
   "thread",
   "technical",
-];
+  "podcast",
+  "tutorial",
+  "recap",
+  "sports",
+] as const;
 
-export type BlogStyle =
-  | "seo"
-  | "medium"
-  | "newsletter"
-  | "thread"
-  | "technical";
+export type BlogStyle = (typeof BLOG_STYLES)[number];
+
+/** Blog generation configuration */
+export interface BlogConfig {
+  style: BlogStyle;
+  sections: number;
+  wordCount: number;
+  tone?: string;
+}
 
 export type StepStatus = "pending" | "running" | "done" | "error";
 

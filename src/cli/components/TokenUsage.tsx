@@ -6,6 +6,13 @@
 import { Box, Text } from "ink";
 import { useTheme } from "../theme/index.js";
 
+/** Formats large numbers with K/M suffixes */
+function formatK(n: number): string {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+  if (n >= 1000) return `${(n / 1000).toFixed(0)}K`;
+  return String(n);
+}
+
 interface TokenUsageProps {
   promptTokens: number;
   completionTokens: number;
@@ -102,12 +109,6 @@ export function ContextMeter({ used, limit, width = 30 }: ContextMeterProps) {
     return theme.palette.success;
   };
 
-  const formatK = (n: number) => {
-    if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
-    if (n >= 1000) return `${(n / 1000).toFixed(0)}K`;
-    return String(n);
-  };
-
   return (
     <Box>
       <Text color={theme.palette.textMuted}>Context: </Text>
@@ -132,12 +133,6 @@ interface ModelInfoProps {
 /** Displays model name, provider, and context window size. */
 export function ModelInfo({ model, provider, contextWindow }: ModelInfoProps) {
   const { theme } = useTheme();
-
-  const formatK = (n: number) => {
-    if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
-    if (n >= 1000) return `${(n / 1000).toFixed(0)}K`;
-    return String(n);
-  };
 
   return (
     <Box>

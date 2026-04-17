@@ -4,12 +4,11 @@
  */
 
 import { generate, completeJSON } from "../gateway/index.js";
-import type { BlogConfig, BYOKConfig } from "../gateway/types.js";
+import type { BlogConfig } from "../gateway/types.js";
 import { getStylePrompt } from "../prompts/styles.js";
 
 export interface RefinerOptions {
   model: string;
-  byok?: BYOKConfig;
   addSEO?: boolean;
 }
 
@@ -49,7 +48,6 @@ RULES:
     messages: [{ role: "user", content: prompt }],
     temperature: 0.5, // Lower temp for consistent refinement
     maxTokens: 8000,
-    byok: options.byok,
   });
 
   return result.text;
@@ -59,7 +57,6 @@ RULES:
 export async function generateSEO(
   blog: string,
   model: string,
-  byok?: BYOKConfig,
 ): Promise<{
   title: string;
   metaDescription: string;
@@ -79,14 +76,13 @@ Return JSON:
   "slug": "url-friendly-slug"
 }`;
 
-  return completeJSON(model, prompt, byok);
+  return completeJSON(model, prompt);
 }
 
 /** Validates blog quality and returns score with suggestions. */
 export async function validateBlog(
   blog: string,
   model: string,
-  byok?: BYOKConfig,
 ): Promise<{
   score: number;
   issues: string[];
@@ -110,7 +106,7 @@ Score from 1-10 based on:
 - Engagement factor
 - Grammar and style`;
 
-  return completeJSON(model, prompt, byok);
+  return completeJSON(model, prompt);
 }
 
 /** Converts blog to markdown, HTML, or plaintext format. */
