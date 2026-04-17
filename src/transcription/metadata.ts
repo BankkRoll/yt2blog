@@ -4,6 +4,13 @@
  */
 
 import { extractVideoId } from "./youtube.js";
+import {
+  INNERTUBE_API_URL,
+  INNERTUBE_CONTEXT,
+  INNERTUBE_USER_AGENT,
+  YOUTUBE_OEMBED_URL,
+} from "../utils/innertube.js";
+import { formatSeconds } from "../utils/time.js";
 
 /** Video metadata from YouTube */
 export interface VideoMetadata {
@@ -29,18 +36,6 @@ interface OEmbedResponse {
   thumbnail_width: number;
   thumbnail_height: number;
 }
-
-const OEMBED_URL = "https://www.youtube.com/oembed";
-const INNERTUBE_API_URL =
-  "https://www.youtube.com/youtubei/v1/player?prettyPrint=false";
-const INNERTUBE_CLIENT_VERSION = "20.10.38";
-const INNERTUBE_CONTEXT = {
-  client: {
-    clientName: "ANDROID",
-    clientVersion: INNERTUBE_CLIENT_VERSION,
-  },
-};
-const INNERTUBE_USER_AGENT = `com.google.android.youtube/${INNERTUBE_CLIENT_VERSION} (Linux; U; Android 14)`;
 
 /**
  * Fetches video metadata using YouTube's oEmbed API (fast, reliable).
@@ -76,7 +71,7 @@ export async function getVideoMetadata(
 
 /** Fetches basic metadata via oEmbed API */
 async function fetchOEmbed(videoId: string): Promise<OEmbedResponse> {
-  const url = `${OEMBED_URL}?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+  const url = `${YOUTUBE_OEMBED_URL}?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
 
   const response = await fetch(url);
   if (!response.ok) {
@@ -138,14 +133,7 @@ export function getThumbnailUrl(
 
 /** Formats video duration from seconds to human-readable string */
 export function formatDuration(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-
-  if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
-  }
-  return `${minutes}:${secs.toString().padStart(2, "0")}`;
+  return formatSeconds(seconds);
 }
 
 /** Formats view count with K/M suffixes */

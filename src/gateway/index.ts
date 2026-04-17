@@ -5,7 +5,10 @@
 
 import { generateText, streamText } from "ai";
 import { gateway } from "@ai-sdk/gateway";
+import type { ZodSchema } from "zod";
 import type { Message } from "./types.js";
+import { getLogger } from "../utils/logger.js";
+import { ModelStringSchema, validate } from "../utils/validation.js";
 
 /** Model information returned from the AI Gateway */
 export interface GatewayModel {
@@ -189,12 +192,17 @@ interface ProviderOptions {
   };
 }
 
+/** Default timeout for API requests (2 minutes) */
+const DEFAULT_TIMEOUT_MS = 120_000;
+
 /** Options for text generation */
 export interface GenerateOptions {
   model: string;
   messages: Message[];
   temperature?: number;
   maxTokens?: number;
+  /** Request timeout in milliseconds (default: 120000) */
+  timeoutMs?: number;
 }
 
 /** Result from text generation */
@@ -270,49 +278,129 @@ function buildProviderOptions(provider: string): ProviderOptions | undefined {
 export async function generate(
   options: GenerateOptions,
 ): Promise<GenerateResult> {
-  const { model, messages, temperature = 0.7, maxTokens = 4096 } = options;
-  const { provider } = parseModel(model);
-
-  const result = await generateText({
+  const {
     model,
     messages,
-    temperature,
-    maxTokens: maxTokens as any,
-    providerOptions: buildProviderOptions(provider),
-  } as any);
+    temperature = 0.7,
+    maxTokens = 4096,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+  } = options;
+  const logger = getLogger();
 
-  const usage = result.usage as any;
-  return {
-    text: result.text,
-    usage: usage
-      ? {
-          promptTokens: usage.promptTokens || usage.input_tokens || 0,
-          completionTokens: usage.completionTokens || usage.output_tokens || 0,
-          totalTokens:
-            usage.totalTokens ||
-            usage.promptTokens + usage.completionTokens ||
-            0,
-        }
-      : undefined,
-    model,
-    provider,
-  };
+  // Validate model string format
+  validate(ModelStringSchema, model, "model");
+
+  const { provider } = parseModel(model);
+
+  // Check API key availability
+  if (!hasApiKey(provider)) {
+    throw new Error(
+      `No API key found for provider "${provider}". ` +
+        `Set ${PROVIDER_ENV_KEYS[provider] || `${provider.toUpperCase()}_API_KEY`} or AI_GATEWAY_API_KEY.`,
+    );
+  }
+
+  logger.debug(`Generating with ${model}`, {
+    temperature,
+    maxTokens,
+    timeoutMs,
+  });
+  const startTime = Date.now();
+
+  // Setup timeout with AbortController
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    // Note: AI Gateway SDK types don't perfectly align with ai SDK types
+    // but runtime behavior is correct - use type assertion
+    const providerOpts = buildProviderOptions(provider);
+
+    const generateOptions = {
+      model: gateway(model),
+      messages,
+      temperature,
+      maxTokens,
+      abortSignal: controller.signal,
+      ...(providerOpts && { providerOptions: providerOpts }),
+    };
+
+    const result = await generateText(
+      generateOptions as unknown as Parameters<typeof generateText>[0],
+    );
+
+    const elapsed = Date.now() - startTime;
+
+    // Extract usage - handle both v2 and v3 SDK formats
+    const rawUsage = result.usage as Record<string, number> | undefined;
+    const promptTokens = rawUsage?.promptTokens ?? rawUsage?.input_tokens ?? 0;
+    const completionTokens =
+      rawUsage?.completionTokens ?? rawUsage?.output_tokens ?? 0;
+
+    logger.debug(`Generation complete in ${elapsed}ms`, {
+      model,
+      promptTokens,
+      completionTokens,
+    });
+
+    return {
+      text: result.text,
+      usage: rawUsage
+        ? {
+            promptTokens,
+            completionTokens,
+            totalTokens:
+              rawUsage.totalTokens ?? promptTokens + completionTokens,
+          }
+        : undefined,
+      model,
+      provider,
+    };
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(
+        `Request timed out after ${timeoutMs}ms for model ${model}`,
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 /** Streams text using the specified model via AI Gateway. */
 export function generateStream(options: GenerateOptions) {
   const { model, messages, temperature = 0.7, maxTokens = 4096 } = options;
+  const logger = getLogger();
+
+  // Validate model string format
+  validate(ModelStringSchema, model, "model");
+
   const { provider } = parseModel(model);
 
-  const result = streamText({
-    model,
+  // Check API key availability
+  if (!hasApiKey(provider)) {
+    throw new Error(
+      `No API key found for provider "${provider}". ` +
+        `Set ${PROVIDER_ENV_KEYS[provider] || `${provider.toUpperCase()}_API_KEY`} or AI_GATEWAY_API_KEY.`,
+    );
+  }
+
+  logger.debug(`Streaming with ${model}`, { temperature, maxTokens });
+
+  const providerOpts = buildProviderOptions(provider);
+
+  const streamOptions = {
+    model: gateway(model),
     messages,
     temperature,
-    maxTokens: maxTokens as any,
-    providerOptions: buildProviderOptions(provider),
-  } as any);
+    maxTokens,
+    ...(providerOpts && { providerOptions: providerOpts }),
+  };
 
-  return result;
+  return streamText(
+    streamOptions as unknown as Parameters<typeof streamText>[0],
+  );
 }
 
 /** Simple completion helper for single prompts. */
@@ -324,11 +412,28 @@ export async function complete(model: string, prompt: string): Promise<string> {
   return result.text;
 }
 
-/** Generates JSON output with automatic parsing. */
+/**
+ * Generates JSON output with automatic parsing and optional validation.
+ * @param model - Model identifier (e.g., "openai/gpt-4o")
+ * @param prompt - Prompt requesting JSON output
+ * @param schema - Optional Zod schema for validation (recommended for type safety)
+ * @returns Parsed (and validated if schema provided) JSON
+ */
 export async function completeJSON<T = unknown>(
   model: string,
   prompt: string,
+  schema?: ZodSchema<T>,
 ): Promise<T> {
+  const logger = getLogger();
+
+  // Warn if no schema provided - validation is recommended for production
+  if (!schema) {
+    logger.warn("completeJSON called without schema validation", {
+      model,
+      promptPreview: prompt.slice(0, 100),
+    });
+  }
+
   const result = await generate({
     model,
     messages: [
@@ -342,6 +447,7 @@ export async function completeJSON<T = unknown>(
     temperature: 0.3, // Lower temp for structured output
   });
 
+  // Strip markdown code blocks if present
   let jsonStr = result.text.trim();
   if (jsonStr.startsWith("```json")) {
     jsonStr = jsonStr.slice(7);
@@ -353,5 +459,25 @@ export async function completeJSON<T = unknown>(
     jsonStr = jsonStr.slice(0, -3);
   }
 
-  return JSON.parse(jsonStr.trim()) as T;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonStr.trim());
+  } catch (e) {
+    logger.error("Failed to parse LLM JSON response", {
+      error: e,
+      response: result.text.slice(0, 200),
+    });
+    throw new Error(`Failed to parse JSON from LLM response: ${e}`);
+  }
+
+  // Validate against schema if provided
+  if (schema) {
+    logger.debug("Validating JSON response against schema");
+    return validate(schema, parsed, "LLM JSON response");
+  }
+
+  logger.debug("Returning unvalidated JSON response", {
+    keys: typeof parsed === "object" && parsed ? Object.keys(parsed) : [],
+  });
+  return parsed as T;
 }

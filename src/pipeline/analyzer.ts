@@ -5,6 +5,8 @@
 
 import { completeJSON } from "../gateway/index.js";
 import type { TranscriptChunk, ContentAnalysis } from "../gateway/types.js";
+import { getLogger } from "../utils/logger.js";
+import { formatSeconds } from "../utils/time.js";
 
 const ANALYSIS_PROMPT = `Analyze this video transcript and extract structured information.
 
@@ -40,10 +42,24 @@ export async function analyzeContent(
   chunks: TranscriptChunk[],
   model: string,
 ): Promise<ContentAnalysis> {
+  const logger = getLogger();
+  const charCount = chunks.reduce((sum, c) => sum + c.text.length, 0);
+  logger.debug("Analyzing content", {
+    chunks: chunks.length,
+    chars: charCount,
+    model,
+  });
+
   const transcript = chunks.map((c) => c.text).join("\n\n");
   const prompt = ANALYSIS_PROMPT.replace("{transcript}", transcript);
 
-  return completeJSON(model, prompt);
+  const result = await completeJSON<ContentAnalysis>(model, prompt);
+  logger.debug("Content analysis complete", {
+    title: result.title,
+    topics: result.topics.length,
+    keyPoints: result.keyPoints.length,
+  });
+  return result;
 }
 
 /**
@@ -58,17 +74,32 @@ export async function analyzeInBatches(
   model: string,
   batchSize: number = 10,
 ): Promise<ContentAnalysis> {
+  const logger = getLogger();
+
   if (chunks.length <= batchSize) {
+    logger.debug("Chunks fit in single batch, using direct analysis");
     return analyzeContent(chunks, model);
   }
 
+  const totalBatches = Math.ceil(chunks.length / batchSize);
+  logger.info("Analyzing in batches", {
+    chunks: chunks.length,
+    batchSize,
+    totalBatches,
+  });
+
   const batchResults: ContentAnalysis[] = [];
   for (let i = 0; i < chunks.length; i += batchSize) {
+    const batchNum = Math.floor(i / batchSize) + 1;
     const batch = chunks.slice(i, i + batchSize);
+    logger.debug(`Processing batch ${batchNum}/${totalBatches}`, {
+      chunkRange: `${i}-${i + batch.length}`,
+    });
     const result = await analyzeContent(batch, model);
     batchResults.push(result);
   }
 
+  logger.debug("Merging batch results", { batches: batchResults.length });
   return mergeAnalyses(batchResults, model);
 }
 
@@ -76,6 +107,9 @@ async function mergeAnalyses(
   analyses: ContentAnalysis[],
   model: string,
 ): Promise<ContentAnalysis> {
+  const logger = getLogger();
+  logger.debug("Merging analyses", { count: analyses.length });
+
   const mergePrompt = `Merge these content analyses into a single coherent analysis.
 
 ANALYSES:
@@ -97,7 +131,12 @@ Rules:
 - Keep only the best 3-5 quotes
 - Title should capture the full content`;
 
-  return completeJSON(model, mergePrompt);
+  const result = await completeJSON<ContentAnalysis>(model, mergePrompt);
+  logger.debug("Merge complete", {
+    title: result.title,
+    topics: result.topics.length,
+  });
+  return result;
 }
 
 /**
@@ -110,8 +149,15 @@ export async function extractHighlights(
   chunks: TranscriptChunk[],
   model: string,
 ): Promise<Array<{ timestamp: number; text: string; reason: string }>> {
+  const logger = getLogger();
+  const duration = chunks.length > 0 ? chunks[chunks.length - 1].end : 0;
+  logger.debug("Extracting highlights", {
+    chunks: chunks.length,
+    duration: formatSeconds(duration),
+  });
+
   const transcript = chunks
-    .map((c) => `[${formatTime(c.start)}] ${c.text}`)
+    .map((c) => `[${formatSeconds(c.start)}] ${c.text}`)
     .join("\n");
 
   const prompt = `Find the most compelling/viral moments in this transcript.
@@ -126,11 +172,9 @@ Return JSON array:
 
 Find 3-5 moments that would make good hooks, clips, or social quotes.`;
 
-  return completeJSON(model, prompt);
-}
-
-function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, "0")}`;
+  const result = await completeJSON<
+    Array<{ timestamp: number; text: string; reason: string }>
+  >(model, prompt);
+  logger.debug("Highlights extracted", { count: result.length });
+  return result;
 }

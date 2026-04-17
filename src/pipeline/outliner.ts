@@ -9,6 +9,7 @@ import type {
   BlogOutline,
   BlogConfig,
 } from "../gateway/types.js";
+import { getLogger } from "../utils/logger.js";
 
 const OUTLINE_PROMPT = `Create a blog outline based on this content analysis.
 
@@ -48,13 +49,25 @@ export async function generateOutline(
   config: BlogConfig,
   model: string,
 ): Promise<BlogOutline> {
+  const logger = getLogger();
+  logger.debug("Generating outline", {
+    style: config.style,
+    targetSections: config.sections,
+    wordCount: config.wordCount,
+  });
+
   const prompt = OUTLINE_PROMPT.replace("{analysis}", JSON.stringify(analysis))
     .replace(/\{style\}/g, config.style)
     .replace(/\{sections\}/g, String(config.sections))
     .replace("{wordCount}", String(config.wordCount))
     .replace("{tone}", config.tone || analysis.tone);
 
-  return completeJSON(model, prompt);
+  const result = await completeJSON<BlogOutline>(model, prompt);
+  logger.debug("Outline generated", {
+    title: result.title,
+    sections: result.sections.length,
+  });
+  return result;
 }
 
 /** Distributes target word count across sections (intro/conclusion get less). */
@@ -84,6 +97,7 @@ export function validateOutline(
   outline: BlogOutline,
   config: BlogConfig,
 ): { valid: boolean; issues: string[] } {
+  const logger = getLogger();
   const issues: string[] = [];
 
   if (!outline.title) {
@@ -109,7 +123,16 @@ export function validateOutline(
     }
   }
 
-  return { valid: issues.length === 0, issues };
+  const valid = issues.length === 0;
+  if (valid) {
+    logger.debug("Outline validation passed", {
+      sections: outline.sections.length,
+    });
+  } else {
+    logger.warn("Outline validation failed", { issues });
+  }
+
+  return { valid, issues };
 }
 
 /** Adjusts outline based on feedback using AI. */
@@ -118,6 +141,9 @@ export async function refineOutline(
   feedback: string,
   model: string,
 ): Promise<BlogOutline> {
+  const logger = getLogger();
+  logger.debug("Refining outline", { feedbackLength: feedback.length });
+
   const prompt = `Refine this blog outline based on the feedback.
 
 CURRENT OUTLINE:
@@ -128,5 +154,7 @@ ${feedback}
 
 Return the improved outline in the same JSON format.`;
 
-  return completeJSON(model, prompt);
+  const result = await completeJSON<BlogOutline>(model, prompt);
+  logger.debug("Outline refined", { sections: result.sections.length });
+  return result;
 }

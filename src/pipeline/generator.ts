@@ -11,6 +11,51 @@ import type {
   ContentAnalysis,
 } from "../gateway/types.js";
 import { getStylePrompt } from "../prompts/styles.js";
+import { getLogger } from "../utils/logger.js";
+
+/** Result from generating a section including token usage */
+export interface SectionResult {
+  text: string;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+}
+
+/** Result from generating all sections */
+export interface GeneratorResult {
+  sections: string[];
+  totalUsage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+}
+
+/**
+ * Validates that the section count is appropriate for the transcript length.
+ * Prevents empty sections when there are too few chunks.
+ */
+export function validateChunkSectionRatio(
+  chunksLength: number,
+  sectionsCount: number,
+): { adjustedSections: number; warning?: string } {
+  if (chunksLength === 0) {
+    throw new Error("Cannot generate blog: no transcript chunks available");
+  }
+
+  // If sections > chunks * 2, some sections would be empty or nearly empty
+  if (sectionsCount > chunksLength * 2) {
+    const adjustedSections = Math.max(1, Math.ceil(chunksLength / 2));
+    return {
+      adjustedSections,
+      warning: `Section count (${sectionsCount}) is too high for transcript length (${chunksLength} chunks). Adjusted to ${adjustedSections} sections.`,
+    };
+  }
+
+  return { adjustedSections: sectionsCount };
+}
 
 /** Options for blog generation including model and progress callbacks */
 export interface GeneratorOptions {
@@ -77,7 +122,13 @@ export async function generateSection(
   config: BlogConfig,
   analysis: ContentAnalysis,
   options: GeneratorOptions,
-): Promise<string> {
+): Promise<SectionResult> {
+  const logger = getLogger();
+  logger.debug(`Generating section ${sectionIndex + 1}`, {
+    heading: section.heading,
+    chunks: relevantChunks.length,
+  });
+
   const chunkText = relevantChunks.map((c) => c.text).join("\n\n");
   const prompt = buildSectionPrompt(
     sectionIndex,
@@ -93,7 +144,15 @@ export async function generateSection(
     temperature: 0.7,
   });
 
-  return result.text;
+  logger.debug(`Section ${sectionIndex + 1} generated`, {
+    chars: result.text.length,
+    tokens: result.usage?.totalTokens,
+  });
+
+  return {
+    text: result.text,
+    usage: result.usage,
+  };
 }
 
 /** Generates all blog sections in parallel and returns them in order */
@@ -103,10 +162,28 @@ export async function generateAllSections(
   config: BlogConfig,
   analysis: ContentAnalysis,
   options: GeneratorOptions,
-): Promise<string[]> {
-  const sectionsCount = outline.sections.length;
+): Promise<GeneratorResult> {
+  const logger = getLogger();
 
-  const sectionPromises = outline.sections.map((section, i) => {
+  // Validate chunk/section ratio
+  const validation = validateChunkSectionRatio(
+    chunks.length,
+    outline.sections.length,
+  );
+  if (validation.warning) {
+    logger.warn(validation.warning);
+  }
+
+  const sectionsCount = validation.adjustedSections;
+  const sectionsToGenerate = outline.sections.slice(0, sectionsCount);
+
+  logger.info("Generating all sections in parallel", {
+    sections: sectionsCount,
+    chunks: chunks.length,
+    model: options.model,
+  });
+
+  const sectionPromises = sectionsToGenerate.map((section, i) => {
     const relevantChunks = getChunksForSection(chunks, i, sectionsCount);
 
     return generateSection(
@@ -116,13 +193,34 @@ export async function generateAllSections(
       config,
       analysis,
       options,
-    ).then((text) => {
+    ).then((result) => {
       options.onProgress?.(i + 1, sectionsCount);
-      return text;
+      return result;
     });
   });
 
-  return Promise.all(sectionPromises);
+  const results = await Promise.all(sectionPromises);
+
+  // Accumulate token usage
+  const totalUsage = results.reduce(
+    (acc, r) => ({
+      promptTokens: acc.promptTokens + (r.usage?.promptTokens ?? 0),
+      completionTokens: acc.completionTokens + (r.usage?.completionTokens ?? 0),
+      totalTokens: acc.totalTokens + (r.usage?.totalTokens ?? 0),
+    }),
+    { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+  );
+
+  const sections = results.map((r) => r.text);
+  const totalChars = sections.reduce((sum, s) => sum + s.length, 0);
+
+  logger.info("All sections generated", {
+    sections: sectionsCount,
+    totalChars,
+    totalTokens: totalUsage.totalTokens,
+  });
+
+  return { sections, totalUsage };
 }
 
 /** Combines title and sections into final markdown */
@@ -138,12 +236,34 @@ export async function* streamBlog(
   analysis: ContentAnalysis,
   options: GeneratorOptions,
 ): AsyncGenerator<string> {
+  const logger = getLogger();
+
+  // Validate chunk/section ratio
+  const validation = validateChunkSectionRatio(
+    chunks.length,
+    outline.sections.length,
+  );
+  if (validation.warning) {
+    logger.warn(validation.warning);
+  }
+
+  const sectionsCount = validation.adjustedSections;
+  const sectionsToStream = outline.sections.slice(0, sectionsCount);
+
+  logger.info("Streaming blog generation", {
+    sections: sectionsCount,
+    chunks: chunks.length,
+    model: options.model,
+  });
+
   yield `# ${outline.title}\n\n`;
 
-  const sectionsCount = outline.sections.length;
+  for (let i = 0; i < sectionsToStream.length; i++) {
+    const section = sectionsToStream[i];
+    logger.debug(`Streaming section ${i + 1}/${sectionsCount}`, {
+      heading: section.heading,
+    });
 
-  for (let i = 0; i < outline.sections.length; i++) {
-    const section = outline.sections[i];
     const relevantChunks = getChunksForSection(chunks, i, sectionsCount);
     const chunkText = relevantChunks.map((c) => c.text).join("\n\n");
     const prompt = buildSectionPrompt(i, section, chunkText, config, analysis);
@@ -160,4 +280,6 @@ export async function* streamBlog(
     yield "\n\n";
     options.onProgress?.(i + 1, sectionsCount);
   }
+
+  logger.info("Blog streaming complete");
 }

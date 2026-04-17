@@ -16,6 +16,13 @@ import {
   type CacheOptions,
 } from "../utils/cache.js";
 import { withRetry, RetryPresets, type RetryOptions } from "../utils/retry.js";
+import { getLogger } from "../utils/logger.js";
+import {
+  YouTubeUrlSchema,
+  ModelStringSchema,
+  BlogConfigSchema,
+  validate,
+} from "../utils/validation.js";
 import { createHash } from "crypto";
 import type {
   BlogConfig,
@@ -91,6 +98,14 @@ async function getCachedOrFetch<T>(
 export async function runPipeline(
   options: PipelineOptions,
 ): Promise<PipelineResult> {
+  const logger = getLogger();
+  const startTime = Date.now();
+
+  // Validate inputs
+  validate(YouTubeUrlSchema, options.videoUrl, "video URL");
+  validate(ModelStringSchema, options.model, "model");
+  validate(BlogConfigSchema, options.config, "blog config");
+
   const {
     videoUrl,
     model,
@@ -100,6 +115,8 @@ export async function runPipeline(
     retry: retryConfig,
   } = options;
 
+  logger.info("Starting pipeline", { videoUrl, model, style: config.style });
+
   const cacheEnabled = cacheConfig?.enabled ?? true;
   const cache = cacheEnabled ? getCache(cacheConfig?.options) : null;
   const retryOptions = retryConfig ?? RetryPresets.standard;
@@ -108,6 +125,9 @@ export async function runPipeline(
   if (!videoId) {
     throw new Error(`Invalid YouTube URL: ${videoUrl}`);
   }
+
+  // Generate consistent cache key base
+  const configHash = generateConfigHash(config, model);
 
   const tokenUsage: TokenUsageStats = {
     promptTokens: 0,
@@ -179,7 +199,14 @@ export async function runPipeline(
       return result;
     } catch (error) {
       clearInterval(progressInterval);
-      updateStep(stepId, { status: "error", progress });
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      updateStep(stepId, {
+        status: "error",
+        progress,
+        statusText: errorMessage,
+      });
+      logger.error(`Step ${stepId} failed`, { error: errorMessage });
       throw error;
     }
   };
@@ -213,8 +240,8 @@ export async function runPipeline(
   }
   updateStep("chunk", { status: "done", progress: 100 });
 
-  // Analyze content (with caching)
-  const analysisKey = `${videoId}:${model}`;
+  // Analyze content (with caching) - include configHash for consistency
+  const analysisKey = `${videoId}:${configHash}`;
   const analysisFetch = await getCachedOrFetch(
     cache,
     CacheNamespaces.ANALYSIS,
@@ -236,7 +263,7 @@ export async function runPipeline(
   const analysis = analysisFetch.data;
 
   // Generate outline (with caching)
-  const outlineKey = `${videoId}:${generateConfigHash(config, model)}`;
+  const outlineKey = `${videoId}:${configHash}`;
   const outlineFetch = await getCachedOrFetch(
     cache,
     CacheNamespaces.OUTLINE,
@@ -262,7 +289,7 @@ export async function runPipeline(
   const outline = outlineFetch.data;
 
   updateStep("generate", { status: "running", progress: 0 });
-  const sections = await generateAllSections(
+  const generatorResult = await generateAllSections(
     outline,
     chunks,
     config,
@@ -277,7 +304,12 @@ export async function runPipeline(
   );
   updateStep("generate", { status: "done", progress: 100 });
 
-  const rawBlog = assembleBlog(outline.title, sections);
+  // Accumulate token usage from generation
+  tokenUsage.promptTokens += generatorResult.totalUsage.promptTokens;
+  tokenUsage.completionTokens += generatorResult.totalUsage.completionTokens;
+  tokenUsage.totalTokens += generatorResult.totalUsage.totalTokens;
+
+  const rawBlog = assembleBlog(outline.title, generatorResult.sections);
   const blog = await withProgress(
     "refine",
     () => withRetry(() => refineBlog(rawBlog, config, { model }), retryOptions),
@@ -289,6 +321,18 @@ export async function runPipeline(
     seo = await withRetry(() => generateSEO(blog, model), retryOptions);
   }
 
+  const elapsed = Date.now() - startTime;
+  const wordCount = blog.split(/\s+/).length;
+
+  logger.info("Pipeline complete", {
+    videoId,
+    model,
+    style: config.style,
+    wordCount,
+    sections: outline.sections.length,
+    elapsedMs: elapsed,
+  });
+
   return {
     blog,
     seo,
@@ -296,7 +340,7 @@ export async function runPipeline(
       videoId: transcriptResult.videoId,
       model,
       style: config.style,
-      wordCount: blog.split(/\s+/).length,
+      wordCount,
       sections: outline.sections.length,
     },
     tokenUsage,
@@ -307,6 +351,13 @@ export async function runPipeline(
 export async function* streamPipeline(
   options: PipelineOptions,
 ): AsyncGenerator<{ type: "step" | "text"; data: PipelineStep | string }> {
+  const logger = getLogger();
+
+  // Validate inputs
+  validate(YouTubeUrlSchema, options.videoUrl, "video URL");
+  validate(ModelStringSchema, options.model, "model");
+  validate(BlogConfigSchema, options.config, "blog config");
+
   const {
     videoUrl,
     model,
@@ -315,9 +366,16 @@ export async function* streamPipeline(
     retry: retryConfig,
   } = options;
 
+  logger.info("Starting streaming pipeline", {
+    videoUrl,
+    model,
+    style: config.style,
+  });
+
   const cacheEnabled = cacheConfig?.enabled ?? true;
   const cache = cacheEnabled ? getCache(cacheConfig?.options) : null;
   const retryOptions = retryConfig ?? RetryPresets.standard;
+  const configHash = generateConfigHash(config, model);
 
   const videoId = extractVideoId(videoUrl);
   if (!videoId) {
@@ -379,8 +437,8 @@ export async function* streamPipeline(
     data: { id: "chunk", label: "Processing", status: "done", progress: 100 },
   };
 
-  // Analyze content (with caching)
-  const analysisKey = `${videoId}:${model}`;
+  // Analyze content (with caching) - use configHash for consistency
+  const analysisKey = `${videoId}:${configHash}`;
   const cachedAnalysis = cache?.get<ContentAnalysis>(
     CacheNamespaces.ANALYSIS,
     analysisKey,
@@ -426,7 +484,7 @@ export async function* streamPipeline(
   }
 
   // Generate outline (with caching)
-  const outlineKey = `${videoId}:${generateConfigHash(config, model)}`;
+  const outlineKey = `${videoId}:${configHash}`;
   const cachedOutline = cache?.get<BlogOutline>(
     CacheNamespaces.OUTLINE,
     outlineKey,

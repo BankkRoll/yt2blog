@@ -3,6 +3,13 @@
  * @module transcription/youtube
  */
 
+import {
+  INNERTUBE_API_URL,
+  INNERTUBE_CONTEXT,
+  INNERTUBE_USER_AGENT,
+  YOUTUBE_WEB_USER_AGENT,
+} from "../utils/innertube.js";
+
 /** Configuration options for transcript fetching */
 export interface TranscriptConfig {
   lang?: string;
@@ -25,21 +32,8 @@ interface CaptionTrack {
 
 const RE_YOUTUBE =
   /(?:youtube\.com\/(?:shorts\/|[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
-const USER_AGENT =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36,gzip(gfe)";
 const RE_XML_TRANSCRIPT =
   /<text start="([^"]*)" dur="([^"]*)">([^<]*)<\/text>/g;
-
-const INNERTUBE_API_URL =
-  "https://www.youtube.com/youtubei/v1/player?prettyPrint=false";
-const INNERTUBE_CLIENT_VERSION = "20.10.38";
-const INNERTUBE_CONTEXT = {
-  client: {
-    clientName: "ANDROID",
-    clientVersion: INNERTUBE_CLIENT_VERSION,
-  },
-};
-const INNERTUBE_USER_AGENT = `com.google.android.youtube/${INNERTUBE_CLIENT_VERSION} (Linux; U; Android 14)`;
 
 export class YoutubeTranscriptError extends Error {
   constructor(message: string) {
@@ -144,7 +138,7 @@ export class YoutubeTranscript {
       {
         headers: {
           ...(config?.lang && { "Accept-Language": config.lang }),
-          "User-Agent": USER_AGENT,
+          "User-Agent": YOUTUBE_WEB_USER_AGENT,
         },
       },
     );
@@ -233,7 +227,7 @@ export class YoutubeTranscript {
     const transcriptResponse = await fetchFn(transcriptURL, {
       headers: {
         ...(config?.lang && { "Accept-Language": config.lang }),
-        "User-Agent": USER_AGENT,
+        "User-Agent": YOUTUBE_WEB_USER_AGENT,
       },
     });
     if (!transcriptResponse.ok) {

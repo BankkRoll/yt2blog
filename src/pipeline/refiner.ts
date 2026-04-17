@@ -6,6 +6,7 @@
 import { generate, completeJSON } from "../gateway/index.js";
 import type { BlogConfig } from "../gateway/types.js";
 import { getStylePrompt } from "../prompts/styles.js";
+import { getLogger } from "../utils/logger.js";
 
 export interface RefinerOptions {
   model: string;
@@ -18,6 +19,13 @@ export async function refineBlog(
   config: BlogConfig,
   options: RefinerOptions,
 ): Promise<string> {
+  const logger = getLogger();
+  logger.debug("Refining blog", {
+    style: config.style,
+    inputChars: blog.length,
+    addSEO: options.addSEO,
+  });
+
   const styleGuide = getStylePrompt(config.style);
 
   const prompt = `Refine this blog post for publication.
@@ -50,6 +58,7 @@ RULES:
     maxTokens: 8000,
   });
 
+  logger.debug("Blog refined", { outputChars: result.text.length });
   return result.text;
 }
 
@@ -63,6 +72,9 @@ export async function generateSEO(
   keywords: string[];
   slug: string;
 }> {
+  const logger = getLogger();
+  logger.debug("Generating SEO metadata", { blogChars: blog.length });
+
   const prompt = `Generate SEO metadata for this blog post.
 
 BLOG:
@@ -76,7 +88,17 @@ Return JSON:
   "slug": "url-friendly-slug"
 }`;
 
-  return completeJSON(model, prompt);
+  const result = await completeJSON<{
+    title: string;
+    metaDescription: string;
+    keywords: string[];
+    slug: string;
+  }>(model, prompt);
+  logger.debug("SEO metadata generated", {
+    title: result.title,
+    keywords: result.keywords.length,
+  });
+  return result;
 }
 
 /** Validates blog quality and returns score with suggestions. */
@@ -88,6 +110,9 @@ export async function validateBlog(
   issues: string[];
   suggestions: string[];
 }> {
+  const logger = getLogger();
+  logger.debug("Validating blog quality", { blogChars: blog.length });
+
   const prompt = `Evaluate this blog post quality.
 
 BLOG:
@@ -106,7 +131,16 @@ Score from 1-10 based on:
 - Engagement factor
 - Grammar and style`;
 
-  return completeJSON(model, prompt);
+  const result = await completeJSON<{
+    score: number;
+    issues: string[];
+    suggestions: string[];
+  }>(model, prompt);
+  logger.debug("Blog validation complete", {
+    score: result.score,
+    issues: result.issues.length,
+  });
+  return result;
 }
 
 /** Converts blog to markdown, HTML, or plaintext format. */
